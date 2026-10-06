@@ -1,0 +1,41 @@
+services:
+  dns-server:
+    container_name: dns-server
+    hostname: dns-server
+    networks:
+      front:
+    image: docker.io/technitium/dns-server:latest
+    ports:
+      - 53:53/udp
+      - 53:53/tcp
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.technitium.rule=Host(`technitium.my-domain.com`)
+      - traefik.http.routers.technitium.entrypoints=websecure
+      - traefik.http.routers.technitium.tls=true
+      - traefik.http.routers.technitium.tls.certresolver=cloudflare
+      - traefik.http.services.technitium.loadbalancer.server.port=5380
+    environment:
+      - DNS_SERVER_DOMAIN=technitium.my-domain.com
+      - DNS_SERVER_ADMIN_PASSWORD=${TECHNITIUM_ADMIN_PASSWORD:?TECHNITIUM_ADMIN_PASSWORD is required}
+      - DNS_SERVER_LOG_FOLDER_PATH=/var/log/technitium/dns
+    volumes:
+      - config:/etc/dns
+      - logs:/var/log/technitium/dns
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:5380/api/dnsClient/healthCheck | grep '\"status\":\"ok\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    sysctls:
+      - net.ipv4.ip_local_port_range=1024 65535
+
+networks:
+  front:
+    external: true
+
+volumes:
+    config:
+    logs:

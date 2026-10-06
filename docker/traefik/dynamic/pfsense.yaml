@@ -1,0 +1,18 @@
+http:
+  routers:
+    pfsense:
+      rule: Host(`pfsense.my-domain.com`)
+      entryPoints:
+        - websecure
+      middlewares:
+        - admin-only
+      service: pfsense
+      tls:
+        certResolver: cloudflare
+
+  services:
+    pfsense:
+      loadBalancer:
+        serversTransport: insecure@file
+        servers:
+          - url: "https://192.168.99.1"

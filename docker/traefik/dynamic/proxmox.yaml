@@ -1,0 +1,18 @@
+http:
+  routers:
+    proxmox:
+      rule: Host(`pve.my-domain.com`)
+      entryPoints:
+        - websecure
+      middlewares:
+        - admin-only
+      service: proxmox
+      tls:
+        certResolver: cloudflare
+
+  services:
+    proxmox:
+      loadBalancer:
+        serversTransport: insecure@file
+        servers:
+          - url: "https://192.168.99.2:8006"

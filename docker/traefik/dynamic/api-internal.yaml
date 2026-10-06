@@ -1,0 +1,9 @@
+# API access for dns-sync on the internal entrypoint only (:8080, not published).
+# dns-sync uses TRAEFIK_API_URL=http://traefik:8080 and needs no credentials.
+http:
+  routers:
+    api-internal:
+      rule: PathPrefix(`/api`)
+      entryPoints:
+        - traefik
+      service: api@internal

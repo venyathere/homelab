@@ -1,0 +1,70 @@
+// ---------- Docker container logs ----------
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.write.default.receiver]
+  labels     = { host = "ubuntu-1", source = "docker" }
+}
+
+// ---------- systemd journal ----------
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+loki.source.journal "host" {
+  // Needs a persistent journal on the host (/var/log/journal).
+  // If it does not exist, use "/run/log/journal" (mounted in compose.yaml).
+  path          = "/host/var/log/journal"
+  max_age       = "12h"
+  relabel_rules = loki.relabel.journal.rules
+  labels        = { host = "ubuntu-1", source = "journal" }
+  forward_to    = [loki.write.default.receiver]
+}
+
+// ---------- plain log files ----------
+// One glob only: "**/*.log" already matches files directly in /var/log,
+// so a separate "*.log" target would ship every line twice.
+local.file_match "varlog" {
+  path_targets = [
+    { __path__ = "/host/var/log/**/*.log", host = "ubuntu-1", source = "file" },
+  ]
+}
+
+loki.source.file "varlog" {
+  targets    = local.file_match.varlog.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+// ---------- output ----------
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

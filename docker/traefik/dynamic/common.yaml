@@ -1,0 +1,16 @@
+# Shared definitions for the file provider (defined once, used by pbs/pfsense/proxmox
+# routers and by the dashboard router in compose.yaml as admin-only@file).
+http:
+  middlewares:
+    # Admin VLAN (10), MGMT VLAN (99) and Tailscale
+    admin-only:
+      ipAllowList:
+        sourceRange:
+          - 192.168.10.0/24
+          - 192.168.99.0/24
+          - 100.64.0.0/10
+
+  serversTransports:
+    # Lab only: Proxmox, pfSense and PBS use self-signed certificates
+    insecure:
+      insecureSkipVerify: true

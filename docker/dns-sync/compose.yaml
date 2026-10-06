@@ -1,0 +1,48 @@
+services:
+  traefik-dns-sync:
+    build: .
+    image: domain-sync:1.0
+    container_name: traefik-dns-sync
+    restart: unless-stopped
+    environment:
+      # Traefik
+      TRAEFIK_API_URL: ${TRAEFIK_API_URL:-http://traefik:8080}
+      TRAEFIK_TLS_VERIFY: ${TRAEFIK_TLS_VERIFY:-true}
+      # Technitium
+      TECHNITIUM_URL: ${TECHNITIUM_URL:-http://dns-server:5380}
+      TECHNITIUM_TOKEN: ${TECHNITIUM_TOKEN:?TECHNITIUM_TOKEN is required}
+      # Records
+      DNS_ZONES: ${DNS_ZONES:?DNS_ZONES is required}
+      TARGET_IP: ${TARGET_IP:?TARGET_IP is required}
+      RECORD_TTL: ${RECORD_TTL:-300}
+      OVERWRITE_UNMANAGED: ${OVERWRITE_UNMANAGED:-false}
+      # Behaviour
+      SYNC_INTERVAL: ${SYNC_INTERVAL:-30}
+      DELETE_STALE: ${DELETE_STALE:-true}
+      STALE_GRACE_SECONDS: ${STALE_GRACE_SECONDS:-120}
+      DRY_RUN: ${DRY_RUN:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks:
+      - front
+    volumes:
+      - dns-sync-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "/app/sync.py", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  dns-sync-data:
+
+networks:
+  front:
+    external: true

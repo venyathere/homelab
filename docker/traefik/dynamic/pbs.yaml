@@ -1,0 +1,18 @@
+http:
+  routers:
+    pbs:
+      rule: Host(`pbs.my-domain.com`)
+      entryPoints:
+        - websecure
+      middlewares:
+        - admin-only
+      service: pbs
+      tls:
+        certResolver: cloudflare
+
+  services:
+    pbs:
+      loadBalancer:
+        serversTransport: insecure@file
+        servers:
+          - url: "https://192.168.99.5:8007"

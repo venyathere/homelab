@@ -1,0 +1,137 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.153.0
+    container_name: victoriametrics
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=90d
+      - -promscrape.config=/etc/vm/scrape.yml
+      - -selfScrapeInterval=30s
+    volumes:
+      - vm_data:/storage
+      - ${CONFIG_DIR:-.}/victoriametrics/scrape.yml:/etc/vm/scrape.yml:ro
+    networks:
+      - mon
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  pve-exporter:
+    image: prompve/prometheus-pve-exporter:3.10
+    container_name: pve-exporter
+    restart: unless-stopped
+    environment:
+      PVE_USER: prometheus@pve
+      PVE_TOKEN_NAME: monitoring
+      PVE_TOKEN_VALUE: ${PVE_TOKEN:?PVE_TOKEN is required}
+      # Lab only: Proxmox uses a self-signed certificate
+      PVE_VERIFY_SSL: "false"
+    networks:
+      - mon
+    mem_limit: 128m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:13.0
+    container_name: grafana
+    restart: unless-stopped
+    depends_on:
+      - victoriametrics
+      - loki
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=front
+      - traefik.http.routers.grafana.rule=Host(`grafana.my-domain.com`)
+      - traefik.http.routers.grafana.entrypoints=websecure
+      - traefik.http.routers.grafana.tls=true
+      - traefik.http.routers.grafana.tls.certresolver=cloudflare
+      - traefik.http.services.grafana.loadbalancer.server.port=3000
+    networks:
+      - front
+      - mon
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN:?GRAFANA_ADMIN is required}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
+      GF_SERVER_ROOT_URL: https://grafana.my-domain.com
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ${CONFIG_DIR:-.}/datasources:/etc/grafana/provisioning/datasources:ro
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/config.yaml
+    volumes:
+      - loki_data:/loki
+      - ${CONFIG_DIR:-.}/loki/config.yaml:/etc/loki/config.yaml:ro
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=front
+      - traefik.http.routers.loki.rule=Host(`loki.my-domain.com`) && PathPrefix(`/loki/api/v1/push`)
+      - traefik.http.routers.loki.entrypoints=websecure
+      - traefik.http.routers.loki.tls=true
+      - traefik.http.routers.loki.tls.certresolver=cloudflare
+      - traefik.http.routers.loki.middlewares=loki-auth
+      - traefik.http.middlewares.loki-auth.basicauth.users=${LOKI_BASICAUTH:?LOKI_BASICAUTH is required}
+      - traefik.http.services.loki.loadbalancer.server.port=3100
+    networks:
+      - front
+      - mon
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  alloy:
+    image: grafana/alloy:v1.10.0
+    container_name: alloy
+    restart: unless-stopped
+    depends_on:
+      - loki
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - alloy_data:/var/lib/alloy/data
+      - ${CONFIG_DIR:-.}/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log:/host/var/log:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+    networks:
+      - mon
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+networks:
+  front:
+    external: true
+  mon:
+
+volumes:
+  grafana_data:
+  vm_data:
+  loki_data:
+  alloy_data:
